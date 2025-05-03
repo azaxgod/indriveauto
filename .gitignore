@@ -49,3 +49,4 @@ app.*.map.json
 
 # Ignore Gradle build output directory
 build
+commandlinetools-mac-7583922_latest.zip
