@@ -1,30 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
+import 'package:flutter/foundation.dart'; // Для проверки платформы
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeBackgroundService();
+  
+  // Инициализируем сервис фона только если не веб
+  if (!kIsWeb) {
+    await initializeBackgroundService();
+  }
+
   runApp(const MyApp());
 }
 
 const platform = MethodChannel('autoclick_channel');
 
+// Инициализация фонового сервиса (только для мобильных платформ)
 Future<void> initializeBackgroundService() async {
-  final service = FlutterBackgroundService();
-
   if (kIsWeb) {
-    print("Фоновый сервис не поддерживается на Web.");
-    return;
+    return; // Пропускаем настройку фона для Web
   }
+
+  final service = FlutterBackgroundService();
 
   await service.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: backgroundTask,
-      autoStart: false,
+      autoStart: true,
       isForegroundMode: true,
       foregroundServiceNotificationId: 888,
     ),
@@ -35,8 +39,12 @@ Future<void> initializeBackgroundService() async {
 }
 
 void backgroundTask(ServiceInstance service) async {
-  int updateInterval = 1000; // Default update interval in milliseconds
-  int clickInterval = 1000; // Default click interval in milliseconds
+  if (kIsWeb) {
+    return; // Пропускаем фоновую задачу для Web
+  }
+
+  int updateInterval = 1000;
+  int clickInterval = 1000;
 
   service.on('setUpdateInterval').listen((event) {
     updateInterval = event?['interval'];
@@ -46,19 +54,12 @@ void backgroundTask(ServiceInstance service) async {
     clickInterval = event?['interval'];
   });
 
-  if (service is AndroidServiceInstance) {
-    service.on('stopService').listen((event) {
-      service.stopSelf();
-    });
-  }
-
   while (true) {
     await Future.delayed(Duration(milliseconds: updateInterval));
     service.invoke('setData', {
       "message": "Фоновая задача работает ${DateTime.now()}."
     });
 
-    // Simulate clicking at the specified clickInterval
     await Future.delayed(Duration(milliseconds: clickInterval));
     service.invoke('clickAction', {
       "action": "click"
@@ -67,7 +68,7 @@ void backgroundTask(ServiceInstance service) async {
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+  const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -79,45 +80,35 @@ class MyApp extends StatelessWidget {
 }
 
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
 class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeInAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<Offset> _bottomSlideAnimation;
+  late AnimationController _controller;
+  late Animation<double> _fadeIn;
+  late Animation<Offset> _slideIn;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
+    _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
     );
 
-    _fadeInAnimation = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeIn,
-    ));
+    _fadeIn = Tween<double>(begin: 0, end: 1).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeIn),
+    );
 
-    _slideAnimation = Tween<Offset>(begin: Offset(0, 1), end: Offset(0, 0)).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
+    _slideIn = Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOut),
+    );
 
-    _bottomSlideAnimation = Tween<Offset>(begin: Offset(0, 1), end: Offset(0, 0)).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
+    _controller.forward();
 
-    // Start the animation
-    _animationController.forward();
-
-    // After animation ends, navigate to the main screen
     Future.delayed(const Duration(seconds: 3), () {
       Navigator.pushReplacement(
         context,
@@ -128,7 +119,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _controller.dispose();
     super.dispose();
   }
 
@@ -138,40 +129,24 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       backgroundColor: Colors.blue,
       body: Center(
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Title with fade and slide animation
+            const Spacer(),
             FadeTransition(
-              opacity: _fadeInAnimation,
+              opacity: _fadeIn,
               child: SlideTransition(
-                position: _slideAnimation,
+                position: _slideIn,
                 child: const Text(
                   'Welcome to Auto Clicker',
-                  style: TextStyle(
-                    fontSize: 30,
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 30, color: Colors.white, fontWeight: FontWeight.bold),
                 ),
               ),
             ),
             const Spacer(),
-            // Development by Aza Molodoy Boss text with bottom slide animation
-            SlideTransition(
-              position: _bottomSlideAnimation,
-              child: FadeTransition(
-                opacity: _fadeInAnimation,
-                child: const Padding(
-                  padding: EdgeInsets.only(bottom: 12.0),
-                  child: Text(
-                    "Development by Aza Molodoy Boss",
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.white,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
+            const Padding(
+              padding: EdgeInsets.only(bottom: 12.0),
+              child: Text(
+                "Development by Aza Molodoy Boss",
+                style: TextStyle(color: Colors.white, fontStyle: FontStyle.italic),
               ),
             ),
           ],
@@ -182,55 +157,27 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 }
 
 class AutoClickerSettings extends StatefulWidget {
-  const AutoClickerSettings({Key? key}) : super(key: key);
+  const AutoClickerSettings({super.key});
 
   @override
   State<AutoClickerSettings> createState() => _AutoClickerSettingsState();
 }
 
-class _AutoClickerSettingsState extends State<AutoClickerSettings> with SingleTickerProviderStateMixin {
+class _AutoClickerSettingsState extends State<AutoClickerSettings> {
   final TextEditingController _priceController = TextEditingController();
+  bool _isEditing = false;
   bool _isAutoClickerRunning = false;
-  bool isEditing = false;
-  bool isLoading = false;
+  bool _isLoading = false;
+
   String _savedPrice = "";
-
-  double _updateInterval = 1000.0; // Default update interval (in milliseconds)
-  double _clickInterval = 1000.0; // Default click interval (in milliseconds)
-
-  late AnimationController _animationController;
-  late Animation<double> _opacityAnimation;
-  late Animation<Offset> _slideAnimation;
-  late Animation<double> _scaleAnimation;
+  double _clickInterval = 1000.0;
+  double _screenUpdateInterval = 1000.0; // Новый параметр для обновления экрана
 
   @override
   void initState() {
     super.initState();
     _loadSavedPrice();
     _checkAutoClickerStatus();
-
-    // Initialize animations
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    );
-
-    _opacityAnimation = Tween<double>(begin: 0, end: 1).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeIn,
-    ));
-
-    _slideAnimation = Tween<Offset>(begin: Offset(0, 1), end: Offset(0, 0)).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
-
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOut,
-    ));
-
-    _animationController.forward(); // Start animation when the screen is displayed
   }
 
   Future<void> _loadSavedPrice() async {
@@ -247,16 +194,9 @@ class _AutoClickerSettingsState extends State<AutoClickerSettings> with SingleTi
       await prefs.setString('target_price', _priceController.text);
       setState(() {
         _savedPrice = _priceController.text;
-        isEditing = false;
+        _isEditing = false;
       });
     }
-  }
-
-  void _cancelEdit() {
-    setState(() {
-      isEditing = false;
-      _priceController.text = _savedPrice; // Restore the saved price
-    });
   }
 
   Future<void> _checkAutoClickerStatus() async {
@@ -271,37 +211,46 @@ class _AutoClickerSettingsState extends State<AutoClickerSettings> with SingleTi
   }
 
   Future<void> _startAutoClicker() async {
-    setState(() {
-      isLoading = true;
-    });
+    if (_savedPrice.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please enter a target price."), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
 
     try {
-      if (_savedPrice.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text("Please enter a target price."),
-          backgroundColor: Colors.red,
-        ));
+      await platform.invokeMethod('startAutoClicker', {
+        'price': _savedPrice,
+        'clickInterval': _clickInterval.toInt(),
+        'swipeInterval': 2000,
+        'screenUpdateInterval': _screenUpdateInterval.toInt(), // Передаем новый параметр
+      });
+
+      // Проверяем, заработал ли автокликер
+      final isRunning = await platform.invokeMethod('isAutoClickerRunning');
+      if (isRunning == true) {
         setState(() {
-          isLoading = false;
+          _isAutoClickerRunning = true;
         });
-        return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("AutoClicker успешно запущен ✅"), backgroundColor: Colors.green),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Ошибка запуска AutoClicker ❌"), backgroundColor: Colors.red),
+        );
+        debugPrint("AutoClicker: сервис не стартовал. Причина неизвестна.");
       }
-
-      // Set update and click intervals before starting the auto-clicker
-      await platform.invokeMethod('setUpdateInterval', {'interval': _updateInterval.toInt()});
-      await platform.invokeMethod('setClickInterval', {'interval': _clickInterval.toInt()});
-
-      await platform.invokeMethod('startAutoClicker', {'price': _savedPrice});
-      setState(() {
-        _isAutoClickerRunning = true;
-        isEditing = false;
-        isLoading = false;
-      });
-    } catch (e) {
-      print("Error starting auto clicker: $e");
-      setState(() {
-        isLoading = false;
-      });
+    } catch (e, stackTrace) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Не удалось запустить автокликер ❌"), backgroundColor: Colors.red),
+      );
+      // В лог для разработчика подробная ошибка
+      debugPrint("Ошибка запуска AutoClicker: $e\nСтек вызовов:\n$stackTrace");
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 
@@ -318,162 +267,131 @@ class _AutoClickerSettingsState extends State<AutoClickerSettings> with SingleTi
 
   @override
   Widget build(BuildContext context) {
-    bool isInputDisabled = _isAutoClickerRunning || isLoading;
-
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("Auto Clicker"),
-        centerTitle: true,
-      ),
-      body: Stack(
-        children: [
-          // Main content
-          SafeArea(
-            child: AnimatedOpacity(
-              opacity: _opacityAnimation.value,
-              duration: const Duration(seconds: 2),
-              child: Column(
-                children: [
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.all(16.0),
-                      child: Column(
+      appBar: AppBar(title: const Text('Auto Clicker Settings')),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            Card(
+              elevation: 5,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _priceController,
+                        enabled: _isEditing,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Target Price'),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    if (!_isEditing)
+                      IconButton(
+                        icon: const Icon(Icons.edit),
+                        onPressed: () {
+                          setState(() => _isEditing = true);
+                        },
+                      )
+                    else
+                      Row(
                         children: [
-                          Row(
-                            children: [
-                              Expanded(
-                                child: TextField(
-                                  controller: _priceController,
-                                  decoration: const InputDecoration(
-                                    labelText: "Target price",
-                                    border: OutlineInputBorder(),
-                                  ),
-                                  keyboardType: TextInputType.number,
-                                  enabled: isEditing && !isInputDisabled,
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              if (!isEditing)
-                                IconButton(
-                                  icon: const Icon(Icons.edit),
-                                  onPressed: isInputDisabled
-                                      ? null
-                                      : () {
-                                          setState(() {
-                                            isEditing = true;
-                                          });
-                                        },
-                                ),
-                              if (isEditing) ...[
-                                IconButton(
-                                  icon: const Icon(Icons.check, color: Colors.green),
-                                  onPressed: isInputDisabled ? null : _savePrice,
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.close, color: Colors.red),
-                                  onPressed: isInputDisabled ? null : _cancelEdit,
-                                ),
-                              ],
-                            ],
+                          IconButton(
+                            icon: const Icon(Icons.save),
+                            onPressed: _savePrice,
                           ),
-                          const SizedBox(height: 24),
-
-                          // Slider for update interval
-                          const Text("Update Interval (ms)"),
-                          Slider(
-                            value: _updateInterval,
-                            min: 500.0,
-                            max: 5000.0,
-                            divisions: 9,
-                            label: _updateInterval.toStringAsFixed(0),
-                            onChanged: isInputDisabled
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _updateInterval = value;
-                                    });
-                                  },
-                          ),
-                          const SizedBox(height: 16),
-
-                          // Slider for click interval
-                          const Text("Click Interval (ms)"),
-                          Slider(
-                            value: _clickInterval,
-                            min: 500.0,
-                            max: 5000.0,
-                            divisions: 9,
-                            label: _clickInterval.toStringAsFixed(0),
-                            onChanged: isInputDisabled
-                                ? null
-                                : (value) {
-                                    setState(() {
-                                      _clickInterval = value;
-                                    });
-                                  },
-                          ),
-                          const SizedBox(height: 24),
-
-                          ElevatedButton(
-                            onPressed: isLoading || _isAutoClickerRunning
-                                ? null
-                                : _startAutoClicker,
-                            style: ElevatedButton.styleFrom(
-                              minimumSize: const Size(double.infinity, 50),
-                            ),
-                            child: isLoading
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text("Start Auto Clicker"),
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                            onPressed: !_isAutoClickerRunning ? null : _stopAutoClicker,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.red,
-                              minimumSize: const Size(double.infinity, 50),
-                            ),
-                            child: const Text("Stop Auto Clicker"),
-                          ),
-                          const SizedBox(height: 24),
-                          Text(
-                            _isAutoClickerRunning
-                                ? "Auto Clicker is Running"
-                                : "Auto Clicker is Stopped",
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: _isAutoClickerRunning ? Colors.green : Colors.red,
-                            ),
+                          IconButton(
+                            icon: const Icon(Icons.cancel),
+                            onPressed: () {
+                              setState(() {
+                                _priceController.text = _savedPrice;
+                                _isEditing = false;
+                              });
+                            },
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-
-          // Overlay for loading
-          if (isLoading)
-            Positioned.fill(
-              child: Container(
-                color: Colors.black.withOpacity(0.5),
-                child: const Center(
-                  child: CircularProgressIndicator(
-                    color: Colors.white,
-                  ),
+                  ],
                 ),
               ),
             ),
-        ],
+            const SizedBox(height: 24),
+            Card(
+              elevation: 5,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    const Text('Click Interval (ms)', style: TextStyle(fontSize: 16)),
+                    Slider(
+                      value: _clickInterval,
+                      min: 500,
+                      max: 5000,
+                      divisions: 9,
+                      onChanged: (value) {
+                        setState(() {
+                          _clickInterval = value;
+                        });
+                      },
+                    ),
+                    Text('${_clickInterval.toInt()} ms', style: const TextStyle(fontSize: 14)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            Card(
+              elevation: 5,
+              margin: const EdgeInsets.symmetric(vertical: 10),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    const Text('Screen Update Interval (ms)', style: TextStyle(fontSize: 16)),
+                    Slider(
+                      value: _screenUpdateInterval,
+                      min: 500,
+                      max: 5000,
+                      divisions: 9,
+                      onChanged: (value) {
+                        setState(() {
+                          _screenUpdateInterval = value;
+                        });
+                      },
+                    ),
+                    Text('${_screenUpdateInterval.toInt()} ms', style: const TextStyle(fontSize: 14)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            _isLoading
+                ? const CircularProgressIndicator()
+                : Column(
+                    children: [
+                      ElevatedButton(
+                        onPressed: _isAutoClickerRunning ? null : _startAutoClicker,
+                        child: const Text('Start Auto Clicker'),
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _isAutoClickerRunning ? _stopAutoClicker : null,
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        child: const Text('Stop Auto Clicker'),
+                      ),
+                    ],
+                  ),
+            const Spacer(),
+            const Text(
+              "Development by Aza Molodoy Boss",
+              style: TextStyle(fontStyle: FontStyle.italic),
+            ),
+          ],
+        ),
       ),
     );
   }
